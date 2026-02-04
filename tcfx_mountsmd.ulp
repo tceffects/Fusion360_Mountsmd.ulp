@@ -1,0 +1,125 @@
+#usage "en: <b>Generate SMD mount data for pick and place machines</b>\n"
+       "<p>Generates two files (.mnt for top, .mnb for bottom) with SMD component "
+       "placement data in mm. Compatible with OpenPnP and other mounting machines.</p>"
+       "<p>Output format: name x-coord y-coord rotation value package</p>"
+       "<author>TCFX Custom ULP</author>"
+
+if (!board) {
+    dlgMessageBox("This ULP requires an open board layout.");
+    exit(1);
+}
+
+// Output file paths
+string topFile;
+string botFile;
+string baseName;
+
+board(B) {
+    baseName = filesetext(B.name, "");
+    topFile = baseName + ".mnt";
+    botFile = baseName + ".mnb";
+}
+
+topFile = dlgFileSave("Save TOP mount file (.mnt)", topFile, "*.mnt");
+if (topFile == "") exit(0);
+
+botFile = dlgFileSave("Save BOTTOM mount file (.mnb)", filesetext(topFile, ".mnb"), "*.mnb");
+if (botFile == "") exit(0);
+
+// Collect top and bottom SMD data
+string topLines = "";
+string botLines = "";
+int topCount = 0;
+int botCount = 0;
+
+board(B) {
+    B.elements(E) {
+        // Check if element has SMD pads
+        int isSmd = 0;
+        int isTop = 0;
+        int isBot = 0;
+
+        E.package.contacts(C) {
+            if (C.smd) {
+                isSmd = 1;
+                if (C.smd.layer == 1) {
+                    isTop = 1;
+                }
+                if (C.smd.layer == 16 || C.smd.layer == 304) {
+                    isBot = 1;
+                }
+            }
+        }
+
+        // Fallback: use mirror flag if layer detection missed it
+        if (isSmd && !isTop && !isBot) {
+            if (E.mirror) {
+                isBot = 1;
+            } else {
+                isTop = 1;
+            }
+        }
+
+        if (!isSmd) continue;
+
+        // Skip if not populated in current assembly variant
+        if (E.populate == 0) continue;
+
+        // Calculate center position from SMD pad extents
+        real xMin = 99999.0;
+        real xMax = -99999.0;
+        real yMin = 99999.0;
+        real yMax = -99999.0;
+
+        E.package.contacts(C) {
+            if (C.smd) {
+                real px = u2mm(C.smd.x);
+                real py = u2mm(C.smd.y);
+                if (px < xMin) xMin = px;
+                if (px > xMax) xMax = px;
+                if (py < yMin) yMin = py;
+                if (py > yMax) yMax = py;
+            }
+        }
+
+        real xCenter = (xMin + xMax) / 2.0;
+        real yCenter = (yMin + yMax) / 2.0;
+
+        // Get rotation angle
+        real angle = E.angle;
+
+        // Build output line: name x y rotation value package
+        string line;
+        sprintf(line, "%s %.4f %.4f %.0f %s %s\n",
+                E.name,
+                xCenter,
+                yCenter,
+                angle,
+                E.value,
+                E.package.name);
+
+        if (isTop) {
+            topLines += line;
+            topCount++;
+        }
+        else if (isBot) {
+            botLines += line;
+            botCount++;
+        }
+    }
+}
+
+// Write top file
+output(topFile, "wt") {
+    printf("%s", topLines);
+}
+
+// Write bottom file
+output(botFile, "wt") {
+    printf("%s", botLines);
+}
+
+string msg;
+sprintf(msg, "Export complete!\n\nTop (.mnt): %d components\nBottom (.mnb): %d components\n\nFiles saved to:\n%s\n%s",
+        topCount, botCount, topFile, botFile);
+dlgMessageBox(msg);
