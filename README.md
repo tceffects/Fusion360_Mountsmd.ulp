@@ -1,4 +1,4 @@
-# tcfx_Mountsmd.ulp
+# TCFX_Mountsmd.ulp
 
 Fusion 360 migrated from the old Eagle layer numbering to their own system. In classic Eagle, top copper was 1 and bottom copper was 16. When Autodesk integrated Eagle into Fusion, they started remapping internal layer numbers—304 is their new bottom copper ID.
 
